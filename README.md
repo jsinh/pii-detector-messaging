@@ -22,6 +22,163 @@ The interesting work is not in any single layer. It is in the routing logic betw
 
 This is *not* a production-ready library. Not yet, not by week 12, probably not ever - that is a different project with different priorities. It is not a drop-in Presidio replacement. It is not tied to any specific compliance regime; GDPR, HIPAA, and the EU AI Act all define PII differently, and reconciling that with your specific risk posture is the user's job to plug in on top of detection.
 
+## Getting started
+
+Works on **macOS, Linux, and Windows**. Two ways to run it: a local Python
+environment, or Docker (no Python toolchain required).
+
+### Prerequisites
+
+| Tool | Version | Required for | Notes |
+|---|---|---|---|
+| [Python](https://www.python.org/downloads/) | 3.11+ (developed on 3.13) | Local install | `python3` on macOS/Linux, `python` on Windows |
+| [Git](https://git-scm.com/downloads) | any recent | Cloning | |
+| [Docker](https://docs.docker.com/get-docker/) | any recent | Container run | Optional — only for the Docker path |
+| `make` | any | The `make` shortcuts | Optional. Preinstalled on macOS/Linux. On Windows use WSL, Git Bash, or run the underlying commands shown below |
+
+### 1. Clone
+
+```bash
+git clone https://github.com/jsinh/pii-detector-messaging.git
+cd pii-detector-messaging
+```
+
+### 2. Create and activate a virtual environment
+
+**macOS / Linux:**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+**Windows (PowerShell):**
+
+```powershell
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+**Windows (Command Prompt):**
+
+```cmd
+py -m venv .venv
+.venv\Scripts\activate.bat
+```
+
+> If PowerShell blocks activation with an execution-policy error, run once:
+> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+
+### 3. Install
+
+```bash
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+```
+
+This installs the project in **editable** mode from `src/` along with the dev
+dependencies (pytest, httpx, ruff). Editable means your source edits are live
+without reinstalling. (`make install` runs the second command for you.)
+
+### 4. Run the API
+
+Pick whichever you like — all four serve the same app on port 8000:
+
+| Command | What it is | Binds |
+|---|---|---|
+| `make dev` | Dev server, auto-reload | `127.0.0.1` |
+| `make run` | Production-style server | `0.0.0.0` |
+| `pii-detector` | The installed console command (`make run` calls this) | `0.0.0.0` |
+| `fastapi dev src/pii_detector/api/app.py` | The raw FastAPI dev command | `127.0.0.1` |
+
+**Not using `make`** (e.g. Windows without WSL)? Run the commands directly:
+
+```bash
+fastapi dev src/pii_detector/api/app.py   # development, with auto-reload
+pii-detector                              # production-style run
+```
+
+### 5. Verify it's up
+
+- Liveness: [http://127.0.0.1:8000/healthz](http://127.0.0.1:8000/healthz)
+- Readiness: [http://127.0.0.1:8000/readyz](http://127.0.0.1:8000/readyz)
+- Swagger UI: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- ReDoc: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+
+Try the detect endpoint:
+
+```bash
+curl -X POST http://127.0.0.1:8000/detect \
+  -H "Content-Type: application/json" \
+  -d '{"text": "dm me at j at jsinh dot com"}'
+```
+
+(Returns `{"entities":[]}` for now — the detection pipeline is a stub; the API
+contract is live so you can integrate against it today.)
+
+## Running with Docker
+
+No local Python needed — just Docker.
+
+```bash
+make docker-build        # or: docker build -t pii-detector-messaging:latest .
+make docker-run          # or: docker run --rm -p 8000:8000 pii-detector-messaging:latest
+```
+
+Then hit [http://127.0.0.1:8000/healthz](http://127.0.0.1:8000/healthz). The image
+runs as a non-root user, binds `0.0.0.0:8000`, and ships a built-in healthcheck.
+
+## Configuration
+
+All settings have safe defaults, so the app runs with zero config. Override any
+of them with environment variables (prefix `PII_`) or a local `.env` file (copy
+[`.env.example`](./.env.example) to `.env`). Common knobs:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PII_HOST` | `0.0.0.0` | Bind address |
+| `PII_PORT` | `8000` | Port |
+| `PII_ENVIRONMENT` | `development` | `development` enables auto-reload for `pii-detector` |
+| `PII_FN_FP_COST_RATIO` | `10` | Eval: cost of a false negative relative to a false positive |
+
+## Development
+
+```bash
+make test      # run the test suite (or: pytest)
+make lint      # lint with ruff   (or: ruff check src tests)
+make format    # auto-format      (or: ruff format src tests)
+make eval      # run eval on the sample dataset (or: pii-eval data/eval/sample.jsonl)
+make help      # list all available commands
+```
+
+## Project layout
+
+```
+src/pii_detector/
+├── api/            # Web layer (FastAPI). The only place the web framework lives.
+│   ├── app.py      #   create_app() factory + the runnable `app` instance
+│   ├── schemas.py  #   public request/response models (the wire contract)
+│   └── routers/    #   endpoints: health.py (/healthz, /readyz), detect.py (/detect)
+├── core/           # Cross-cutting infrastructure
+│   └── config.py   #   env-driven settings (PII_* variables)
+├── detection/      # THE PRODUCT — pure detection logic, no web framework
+│   ├── types.py    #   EntityType + Entity (the domain vocabulary)
+│   ├── base.py     #   Detector interface each layer implements
+│   └── pipeline.py #   orchestrates regex -> NER -> LLM (currently a stub)
+├── eval/           # Compliance-weighted evaluation framework
+│   ├── metrics.py  #   per-entity precision/recall + weighted cost
+│   ├── datasets.py #   JSONL gold-set loader
+│   └── runner.py   #   `pii-eval` command
+└── cli.py          # `pii-detector` command (starts the server)
+
+data/eval/          # Evaluation datasets (JSONL)
+tests/              # Test suite (pytest), mirrors the package structure
+scripts/            # Standalone helper scripts
+```
+
+Design rule: `detection/` and `eval/` never import from `api/` — the detection
+logic must be callable without a web server (from eval, batch jobs, notebooks).
+
 ## The eval framework
 
 The component I am building first, because everything else is meaningless without it.

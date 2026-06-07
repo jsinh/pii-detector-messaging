@@ -1,0 +1,41 @@
+[project]
+name = "pii-detector-messaging"
+version = "0.1.0"
+description = "Messaging-aware PII detection: hybrid regex + fine-tuned NER + LLM pipeline with compliance-weighted eval."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Jaspal Chauhan" }]
+
+dependencies = [
+    "fastapi[standard]==0.136.3",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.6.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "httpx==0.28.1",
+    "ruff==0.8.4",
+]
+
+[project.scripts]
+pii-detector = "pii_detector.cli:main"
+pii-eval = "pii_detector.eval.runner:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]

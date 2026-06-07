@@ -1,0 +1,3 @@
+{"text": "email me at a@b.com", "entities": [{"type": "EMAIL", "value": "a@b.com", "start": 12, "end": 19}]}
+{"text": "call 555-0100 tomorrow", "entities": [{"type": "PHONE", "value": "555-0100", "start": 5, "end": 13}]}
+{"text": "no contact details here", "entities": []}
